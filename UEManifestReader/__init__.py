@@ -10,7 +10,7 @@ class UEManifestReader():
     def __init__(self, **kwargs):
         self.loop = kwargs.get('loop', asyncio.get_event_loop())
         self.is_serialized = False
-    
+
     async def download_manifest(self, platform: Platform = Platform.Windows, return_parsed = True):
         if platform == Platform.Windows:
             launcher_asset_url = 'https://launcher-public-service-prod06.ol.epicgames.com/launcher/api/public/assets/Windows/4fe75bbc5a674f4f9b356b5c90567da5/Fortnite?label=Live'
@@ -40,6 +40,7 @@ class UEManifestReader():
                 headers = {'Authorization': f'bearer {access_token}'}
             ) as response:
                 manifest_info = await response.json()
+                # json.dump(manifest_info, open('manifest.json', 'w'))
         
             distribution = manifest_info['items']['MANIFEST']['distribution']
             path = manifest_info['items']['MANIFEST']['path']
@@ -51,6 +52,8 @@ class UEManifestReader():
             
         if return_parsed:
             return self.parse_manifest(manifest)
+        else:
+            return manifest
 
     def return_manifest_as_json(self, manifest) -> dict:
         parsed = {}
@@ -98,7 +101,7 @@ class UEManifestReader():
 
             for Guid, Hash in manifest['ChunkHashList'].items():
                 manifest['ChunkHashList'][Guid] = ParseIntBlob64(Hash)
-        
+
             return manifest
 
     def parse_manifest(self, manifest: bytes):

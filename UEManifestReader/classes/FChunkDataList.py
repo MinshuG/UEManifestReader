@@ -1,10 +1,17 @@
 # -*- coding: utf-8 -*-
+from io import BytesIO
+import os
+import struct
+from typing import List
+from UEManifestReader import Logger
 from UEManifestReader.enums import *
 from UEManifestReader.converter import *
 from UEManifestReader.classes.stream_reader import ConstBitStreamWrapper
 
+logger = Logger.get_logger(__name__)
+
 class FChunkInfo():
-   def __init__(self):
+    def __init__(self):
        # The GUID for this data.
         self.Guid = None
         # The FRollingHash hashed value for this chunk data.
@@ -18,7 +25,74 @@ class FChunkInfo():
         # The file download size for this chunk.
         self.FileSize = None
 
+    @property
+    def FileName(self):
+        return f"{self.Hash}_{self.Guid}.chunk"
+
+    @property
+    def chunkPath(self):
+        return f"temp/{self.Hash}_{self.Guid}.chunk"
+
+    def DownloadLink(self, baseurl): # new Uri(baseUri, $"{dataGroup:D2}/{Filename}");
+        return f"{baseurl}/{str(self.GroupNumber).zfill(2)}/{self.FileName}"
+
+    def DownloadChunk(self, client, baseurl):
+        path = self.chunkPath
+        if not os.path.exists(path):  # TODO: check if chunk is corrupted or not
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            logger.debug(f"Downloading chunk {self.FileName}")
+            chunkSR = client.get(self.DownloadLink(baseurl))
+            if chunkSR.status_code == 200:
+                io = BytesIO(chunkSR.content)
+
+                io.seek(8)
+                header_size = struct.unpack("I", io.read(4))[0]
+                io.seek(40)
+                is_compressed = int.from_bytes(io.read(1), "little") == 1
+                io.seek(header_size)
+
+                if is_compressed:
+                    from zlib import decompress
+                    decomp_buffer = decompress(io.read())
+                    io.close()
+                    io = BytesIO(decomp_buffer)
+                else:
+                    temp_io = BytesIO(io.read())
+                    io.close()
+                    io = temp_io
+
+                seek_pos = io.tell()
+                with open(self.chunkPath, "wb") as f:
+                    logger.debug(f"Writing {self.chunkPath}")
+                    f.write(io.read())
+                io.seek(seek_pos)
+
+                return io, io.getbuffer().nbytes
+            else:
+                raise Exception("failed to download chunk %d" % self.FileName)
+
+            # logger.info(f"Downloading chunk {self.Id}")
+            # chunkSR = requests.get(self.Url)
+            # if chunkSR.status_code == 200:
+            #         bytes_ = chunkSR.content
+            #         io = BytesIO(bytes_)
+            #         with open(self.chunkPath, "wb") as f:
+            #             logger.debug(f"Writing {self.chunkPath}")
+            #             f.write(io.read())
+            #         io.seek(0, 0)
+            #         return io, len(bytes_)
+            # else:
+            #     raise Exception("failed to download chunk %d" % self.Id)
+        return open(self.chunkPath, "rb"), os.stat(self.chunkPath).st_size
+
+    def GetStream(self, pos, client, baseurl): # relativePos
+        stream, size = self.DownloadChunk(client, baseurl)
+        stream.seek(pos)
+        return stream
+
 class FChunkDataList():
+    ChunkList: List[FChunkInfo]
+
     def __init__(self, reader: ConstBitStreamWrapper):
         StartPos = reader.bytepos
         DataSize = reader.read_uint32()
@@ -30,9 +104,11 @@ class FChunkDataList():
         # This makes it very simple to handle or skip, extra variables added to the struct later.
 
         # Serialise the ManifestMetaVersion::Original version variables.
+        self.ChunkListGuidMap = {}
         if (DataVersion >= EChunkDataListVersion.Original.value):
             for idx, _ in enumerate(self.ChunkList):
                 self.ChunkList[idx].Guid = self.ReadFChunkInfoGuid(reader)
+                self.ChunkListGuidMap[self.ChunkList[idx].Guid] = idx
 
             for idx, _ in enumerate(self.ChunkList):
                 self.ChunkList[idx].Hash = ULongToHexHash(reader.read_uint64())
@@ -59,3 +135,9 @@ class FChunkDataList():
         hex_str += SwapOrder(reader.read_bytes(4))
         hex_str += SwapOrder(reader.read_bytes(4))
         return hex_str.upper()
+
+    def get_by_guid(self, guid: str) -> FChunkInfo:
+        try:
+            return self.ChunkList[self.ChunkListGuidMap[guid]]
+        except KeyError:
+            raise Exception(f"Chunk with guid {guid} not found")

@@ -41,7 +41,7 @@ class FManifestData():
                 ManifestRawData = ConstBitStreamWrapper(Decompressed)
             elif self.Header.StoredAs == EManifestStorageFlags.Encrypted.value:
                 raise Exception('Encrypted Manifests are not supported yet')
-        
+
         # Read the Manifest Meta
         self.Meta = FManifestMeta(ManifestRawData)
         # Read the Manifest Chunk List
@@ -54,3 +54,7 @@ class FManifestData():
     def GetFullDataSize(self) -> int:
         bIsCompressed = self.Header.StoredAs == EManifestStorageFlags.Compressed
         return self.Header.HeaderSize + (bIsCompressed if Header.DataSizeCompressed else Header.DataSizeUncompressed)
+
+    @property
+    def Chunks(self):
+        return self.ChunkDataList.Chunks

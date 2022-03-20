@@ -8,5 +8,5 @@ setup(
     author_email = 'admin@ezfn.dev',
     packages = find_packages(),
     license='MIT',
-    install_requires = ['aiohttp', 'bitstring']
+    install_requires = ['aiohttp', 'bitstring', 'requests']
 )
