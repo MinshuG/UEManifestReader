@@ -30,6 +30,8 @@ class ManifestFileStream:
         for c in self._chunk_parts:
             self.Size += c.Size
 
+        self.__previous_chunk = None
+
     def read(self, size=None):
         if size is None:
             size = self.Size - self._position  # till end
@@ -51,15 +53,14 @@ class ManifestFileStream:
             if (bytesLeft <= chunkBytes):
                 buffer += stream.read(bytesLeft)
                 read_count += bytesLeft
-                stream.close()
+                # stream.close()
                 break
 
             buffer += stream.read(chunkBytes)
-            stream.close()
+            # stream.close()
             read_count += chunkBytes
 
             start_pos = 0
-
             chunk_index += 1
             if chunk_index >= self._chunk_parts.__len__():
                 break
@@ -68,14 +69,17 @@ class ManifestFileStream:
         return buffer
 
     def GetChunkIndex(self, position) -> Tuple['FChunkPart', int, int]:
-        """:returns Chunk and Position in chunk"""
+        """returns Chunk and Position in chunk"""
+        if self.__previous_chunk and position < self.__previous_chunk[0].Size:
+            return self.__previous_chunk[0], position, self.__previous_chunk[1]
+
         for i in range(self._chunk_parts.__len__()):
             c = self._chunk_parts[i]
             size = c.Size
             if position < size:
+                self.__previous_chunk = (c, i)
                 return c, position, i
             position -= size
-
         raise ValueError("Requested chunk not found")
 
     def close(self):

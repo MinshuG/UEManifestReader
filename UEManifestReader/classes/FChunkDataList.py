@@ -24,6 +24,8 @@ class FChunkInfo():
         self.WindowSize = 1048576
         # The file download size for this chunk.
         self.FileSize = None
+        # io stream cache so we don't to open it for every read
+        self.Stream = None
 
     @property
     def FileName(self):
@@ -38,7 +40,13 @@ class FChunkInfo():
 
     def DownloadChunk(self, client, baseurl):
         path = self.chunkPath
-        if not os.path.exists(path):  # TODO: check if chunk is corrupted or not
+        try:
+            if self.Stream:
+                return self.Stream, self.WindowSize
+            else:
+                self.Stream = open(self.chunkPath, "rb")
+                return self.Stream, self.WindowSize
+        except FileNotFoundError:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             logger.debug(f"Downloading chunk {self.FileName}")
             chunkSR = client.get(self.DownloadLink(baseurl))
@@ -54,11 +62,9 @@ class FChunkInfo():
                 if is_compressed:
                     from zlib import decompress
                     decomp_buffer = decompress(io.read())
-                    io.close()
                     io = BytesIO(decomp_buffer)
                 else:
                     temp_io = BytesIO(io.read())
-                    io.close()
                     io = temp_io
 
                 seek_pos = io.tell()
@@ -67,23 +73,10 @@ class FChunkInfo():
                     f.write(io.read())
                 io.seek(seek_pos)
 
-                return io, io.getbuffer().nbytes
+                return io, self.WindowSize
             else:
                 raise Exception("failed to download chunk %d" % self.FileName)
 
-            # logger.info(f"Downloading chunk {self.Id}")
-            # chunkSR = requests.get(self.Url)
-            # if chunkSR.status_code == 200:
-            #         bytes_ = chunkSR.content
-            #         io = BytesIO(bytes_)
-            #         with open(self.chunkPath, "wb") as f:
-            #             logger.debug(f"Writing {self.chunkPath}")
-            #             f.write(io.read())
-            #         io.seek(0, 0)
-            #         return io, len(bytes_)
-            # else:
-            #     raise Exception("failed to download chunk %d" % self.Id)
-        return open(self.chunkPath, "rb"), os.stat(self.chunkPath).st_size
 
     def GetStream(self, pos, client, baseurl): # relativePos
         stream, size = self.DownloadChunk(client, baseurl)

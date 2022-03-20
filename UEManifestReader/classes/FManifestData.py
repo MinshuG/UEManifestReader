@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import zlib
+from UEManifestReader.ManifestFileStream import ManifestFileStream
 from UEManifestReader.enums import *
 from UEManifestReader.classes.FCustomFields import FCustomFields
 from UEManifestReader.classes.FManifestMeta import FManifestMeta
@@ -10,6 +11,7 @@ from UEManifestReader.classes.FFileManifestList import FFileManifestList
 
 # FManifestData - The public interface to load/saving manifest files.
 class FManifestData():
+    base_url: str
     def __init__(self, data: bytes):
         self.reader = ConstBitStreamWrapper(data)
         self.start()
@@ -58,3 +60,14 @@ class FManifestData():
     @property
     def Chunks(self):
         return self.ChunkDataList.Chunks
+
+    def get_file_manifest(self, file_name: str):
+        for f in self.FileManifestList.FileManifest:
+            if f.Filename == file_name:
+                return f
+        raise FileNotFoundError(f'File {file_name} not found in manifest')
+
+    def get_file_stream(self, file_name: str):
+        f = self.get_file_manifest(file_name)
+        from UE4Parse.BinaryReader import BinaryStream
+        return BinaryStream(ManifestFileStream(self, f, self.base_url))
